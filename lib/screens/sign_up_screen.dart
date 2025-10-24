@@ -1,11 +1,14 @@
 import 'package:elsaa/constants/app_colors.dart';
 import 'package:elsaa/constants/responsive_utils.dart';
+import 'package:elsaa/screens/home_screen.dart';
 import 'package:elsaa/screens/login_screen.dart';
 import 'package:elsaa/screens/otp_verification_screen.dart';
 import 'package:elsaa/constants/validators.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:country_code_picker/country_code_picker.dart';
-import 'package:google_fonts/google_fonts.dart';
+
+import 'widgets/auth_services.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({Key? key}) : super(key: key);
@@ -17,9 +20,11 @@ class SignUpScreen extends StatefulWidget {
 class _SignUpScreenState extends State<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
+  final _authService = AuthService();
   String _selectedDialCode = '+1';
   String _selectedCountryCode = 'US';
   bool _isLoading = false;
+  bool _isGoogleLoading = false;
 
   @override
   void dispose() {
@@ -27,37 +32,114 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  void _handleSignUp() {
+  void _handleSignUp() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
 
-      // Simulate API call
-      Future.delayed(const Duration(seconds: 2), () {
+      final fullPhoneNumber = '$_selectedDialCode${_phoneController.text}';
+
+      try {
+        await _authService.sendOTP(
+          phoneNumber: fullPhoneNumber,
+          onCodeSent: (verificationId) {
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('OTP sent to $fullPhoneNumber'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => OTPVerificationScreen(
+                  phoneNumber: fullPhoneNumber,
+                  verificationId: verificationId,
+                ),
+              ),
+            );
+          },
+          onError: (error) {
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(error), backgroundColor: Colors.red),
+            );
+          },
+          onAutoVerify: (credential) async {
+            try {
+              await _authService.signInWithCredential(credential);
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Phone verified automatically!'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+              // Navigate to home screen
+              // Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+            } catch (e) {
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Auto-verification failed: $e'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          },
+        );
+      } catch (e) {
         setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _handleGoogleSignIn() async {
+    setState(() => _isGoogleLoading = true);
+
+    try {
+      final userCredential = await _authService.signInWithGoogle();
+
+      setState(() => _isGoogleLoading = false);
+
+      if (userCredential != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Signing up with $_selectedDialCode ${_phoneController.text}',
+              'Welcome ${userCredential.user?.displayName ?? "User"}!',
             ),
             backgroundColor: Colors.green,
           ),
         );
+        // Navigate to home screen
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (context) =>
-                OTPVerificationScreen(phoneNumber: _phoneController.text),
+          MaterialPageRoute(builder: (context) => HomeServicesScreen()),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Google sign-in cancelled'),
+            backgroundColor: Colors.orange,
           ),
         );
-      });
+      }
+    } catch (e) {
+      setState(() => _isGoogleLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Google sign-in failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-    final isSmallScreen = screenSize.width < 600;
-    final isMediumScreen = screenSize.width >= 600 && screenSize.width < 900;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -88,7 +170,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            // Decorative circles
             Positioned(
               top: 20,
               right: 50,
@@ -104,7 +185,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
               left: 30,
               child: _circle(Colors.orange.withOpacity(0.3), 6),
             ),
-            // Main illustration icon
             Center(
               child: Container(
                 padding: EdgeInsets.all(
@@ -155,7 +235,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Title
             Text(
               'Your Home Services Expert',
               textAlign: TextAlign.center,
@@ -171,7 +250,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
             SizedBox(
               height: SpacingResponsive.getVerticalSpacing(context, factor: 1),
             ),
-            // Subtitle
             Text(
               'Continue with Phone Number',
               textAlign: TextAlign.center,
@@ -194,11 +272,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
             SizedBox(
               height: SpacingResponsive.getVerticalSpacing(context, factor: 2),
             ),
-            _buildOtherOptionButton(context),
+            _buildDividerWithText(context),
             SizedBox(
-              height: SpacingResponsive.getVerticalSpacing(context, factor: 3),
+              height: SpacingResponsive.getVerticalSpacing(context, factor: 2),
             ),
-
+            _buildGoogleSignInButton(context),
             SizedBox(
               height: SpacingResponsive.getVerticalSpacing(context, factor: 3),
             ),
@@ -330,11 +408,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildSignUpButton(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final isSmallScreen = screenSize.width < 600;
-    final isMediumScreen = screenSize.width >= 600 && screenSize.width < 900;
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: _handleSignUp,
+        onPressed: _isLoading ? null : _handleSignUp,
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.buttonPrimary,
           foregroundColor: AppColors.buttonText,
@@ -346,6 +423,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
         ),
         child: _isLoading
             ? const SizedBox(
+                height: 20,
+                width: 20,
                 child: CircularProgressIndicator(
                   color: AppColors.white,
                   strokeWidth: 2.5,
@@ -366,32 +445,81 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildOtherOptionButton(BuildContext context) {
-    return TextButton(
-      onPressed: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Other login options coming soon!')),
-        );
-      },
-      child: Text(
-        'VIEW OTHER OPTION',
-        style: TextStyle(
-          fontSize: TypographyResponsive.getFormFieldFontSize(context),
-          color: AppColors.accent,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
+  Widget _buildDividerWithText(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Divider(
+            color: AppColors.inputBorder.withOpacity(0.5),
+            thickness: 1,
+          ),
         ),
-      ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'OR',
+            style: TextStyle(
+              fontSize: TypographyResponsive.getFormFieldFontSize(context),
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Divider(
+            color: AppColors.inputBorder.withOpacity(0.5),
+            thickness: 1,
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildDivider() {
-    return Container(
-      width: 150,
-      height: 3,
-      decoration: BoxDecoration(
-        color: AppColors.inputBorder,
-        borderRadius: BorderRadius.circular(2),
+  Widget _buildGoogleSignInButton(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final isSmallScreen = screenSize.width < 600;
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _isGoogleLoading ? null : _handleGoogleSignIn,
+        style: OutlinedButton.styleFrom(
+          padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 14 : 16),
+          side: BorderSide(
+            color: AppColors.inputBorder.withOpacity(0.5),
+            width: 1.5,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30),
+          ),
+          backgroundColor: AppColors.white,
+        ),
+        icon: _isGoogleLoading
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Image.asset(
+                'assets/google_logo.png', // Add Google logo to assets
+                height: 24,
+                width: 24,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Icon(
+                    Icons.g_mobiledata,
+                    size: 28,
+                    color: Colors.red,
+                  );
+                },
+              ),
+        label: Text(
+          'Continue with Google',
+          style: TextStyle(
+            fontSize: TypographyResponsive.getResponsiveFontSize(context, 15),
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.3,
+          ),
+        ),
       ),
     );
   }
@@ -409,17 +537,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
           ),
         ),
         GestureDetector(
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Navigating to login...')),
-            );
-
-            // Navigate to LoginScreen using MaterialPageRoute
-            Navigator.pushReplacement(
+          onTap: () async {
+            setState(() => _isLoading = true); // Show loading
+            Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (context) => LoginScreen(),
-              ), // Replace LoginScreen with your screen
+              MaterialPageRoute(builder: (context) => LoginScreen()),
             );
           },
           child: Text(

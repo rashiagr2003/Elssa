@@ -7,6 +7,9 @@ import 'package:elsaa/constants/validators.dart';
 import 'package:flutter/material.dart';
 import 'package:intl_phone_field/phone_number.dart';
 
+import 'home_screen.dart';
+import 'widgets/auth_services.dart';
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
 
@@ -22,12 +25,55 @@ class _LoginScreenState extends State<LoginScreen> {
   String _selectedCountryCode = 'US';
   bool _isLoading = false;
   bool _obscurePassword = true;
+  final _authService = AuthService();
+  bool _isGoogleLoading = false;
 
   @override
   void dispose() {
     _phoneController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  void _handleGoogleSignIn() async {
+    setState(() => _isGoogleLoading = true);
+
+    try {
+      final userCredential = await _authService.signInWithGoogle();
+
+      setState(() => _isGoogleLoading = false);
+
+      if (userCredential != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Welcome ${userCredential.user?.displayName ?? "User"}!',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Navigate to home screen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => HomeServicesScreen()),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Google sign-in cancelled'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isGoogleLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Google sign-in failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _handleLogin() {
@@ -48,8 +94,10 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                OTPVerificationScreen(phoneNumber: _phoneController.text),
+            builder: (context) => OTPVerificationScreen(
+              phoneNumber: _phoneController.text,
+              verificationId: '',
+            ),
           ),
         );
       });
@@ -371,7 +419,7 @@ class _LoginScreenState extends State<LoginScreen> {
         SizedBox(
           height: SpacingResponsive.getVerticalSpacing(context, factor: 2),
         ),
-        _buildSocialButton(context, 'Continue With Google', Icons.mail),
+        _buildGoogleSignInButton(context),
         SizedBox(
           height: SpacingResponsive.getVerticalSpacing(context, factor: 2),
         ),
@@ -406,6 +454,55 @@ class _LoginScreenState extends State<LoginScreen> {
         style: OutlinedButton.styleFrom(
           side: const BorderSide(color: AppColors.inputBorder, width: 1.5),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGoogleSignInButton(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final isSmallScreen = screenSize.width < 600;
+    return SizedBox(
+      width: MediaQuery.of(context).size.width * 0.8,
+      child: OutlinedButton.icon(
+        onPressed: _isGoogleLoading ? null : _handleGoogleSignIn,
+        style: OutlinedButton.styleFrom(
+          padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 14 : 16),
+          side: BorderSide(
+            color: AppColors.inputBorder.withOpacity(0.5),
+            width: 1.5,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          backgroundColor: Colors.transparent,
+        ),
+        icon: _isGoogleLoading
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Image.asset(
+                'assets/google_logo.png', // Add Google logo to assets
+                height: 24,
+                width: 24,
+                errorBuilder: (context, error, stackTrace) {
+                  return const Icon(
+                    Icons.g_mobiledata,
+                    size: 28,
+                    color: Colors.red,
+                  );
+                },
+              ),
+        label: Text(
+          'Continue with Google',
+          style: TextStyle(
+            fontSize: TypographyResponsive.getResponsiveFontSize(context, 15),
+            color: Colors.red,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.3,
+          ),
         ),
       ),
     );

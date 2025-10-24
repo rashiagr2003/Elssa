@@ -4,11 +4,17 @@ import 'package:elsaa/screens/service_location_screen.dart';
 import 'package:elsaa/screens/sign_up_screen.dart';
 import 'package:flutter/material.dart';
 
+import 'widgets/auth_services.dart';
+
 class OTPVerificationScreen extends StatefulWidget {
   final String phoneNumber;
+  final String verificationId;
 
-  const OTPVerificationScreen({Key? key, required this.phoneNumber})
-    : super(key: key);
+  const OTPVerificationScreen({
+    Key? key,
+    required this.phoneNumber,
+    required this.verificationId,
+  }) : super(key: key);
 
   @override
   State<OTPVerificationScreen> createState() => _OTPVerificationScreenState();
@@ -17,14 +23,18 @@ class OTPVerificationScreen extends StatefulWidget {
 class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   late List<TextEditingController> _otpControllers;
   late List<FocusNode> _focusNodes;
+  final _authService = AuthService();
   bool _isLoading = false;
+  bool _isResending = false;
   int _resendCountdown = 0;
+  String _currentVerificationId = '';
 
   @override
   void initState() {
     super.initState();
-    _otpControllers = List.generate(4, (_) => TextEditingController());
-    _focusNodes = List.generate(4, (_) => FocusNode());
+    _otpControllers = List.generate(6, (_) => TextEditingController());
+    _focusNodes = List.generate(6, (_) => FocusNode());
+    _currentVerificationId = widget.verificationId;
   }
 
   @override
@@ -41,11 +51,13 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   void _handleOtpInput(String value, int index) {
     if (value.isNotEmpty) {
       // Move to next field if current field is filled
-      if (index < 3) {
+      if (index < 5) {
         _focusNodes[index + 1].requestFocus();
       } else {
         // All fields filled, unfocus keyboard
         _focusNodes[index].unfocus();
+        // Auto-verify when all fields are filled
+        _handleVerify();
       }
     }
   }
@@ -64,38 +76,129 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     return _otpControllers.every((controller) => controller.text.isNotEmpty);
   }
 
-  void _handleVerify() {
-    if (_isOTPComplete()) {
-      setState(() => _isLoading = true);
+  void _handleVerify() async {
+    if (!_isOTPComplete() || _isLoading) return;
 
-      Future.delayed(const Duration(seconds: 2), () {
-        setState(() => _isLoading = false);
+    final otp = _getOTP();
+    setState(() => _isLoading = true);
+
+    try {
+      final userCredential = await _authService.verifyOTP(
+        verificationId: _currentVerificationId,
+        smsCode: otp,
+      );
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (userCredential != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('OTP Verified: ${_getOTP()}'),
+          const SnackBar(
+            content: Text('Phone number verified successfully!'),
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.push(
+
+        // Navigate to next screen
+        Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => ServiceLocationScreen()),
         );
-      });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+
+      // Clear OTP fields on error
+      for (var controller in _otpControllers) {
+        controller.clear();
+      }
+      _focusNodes[0].requestFocus();
     }
   }
 
-  void _handleResendOTP() {
-    setState(() => _resendCountdown = 30);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('OTP resent to your phone number'),
-        backgroundColor: Colors.blue,
-      ),
-    );
+  void _handleResendOTP() async {
+    if (_isResending || _resendCountdown > 0) return;
 
-    Future.delayed(const Duration(seconds: 1), () {
-      _startCountdown();
-    });
+    setState(() => _isResending = true);
+
+    try {
+      await _authService.sendOTP(
+        phoneNumber: widget.phoneNumber,
+        onCodeSent: (verificationId) {
+          if (!mounted) return;
+          setState(() {
+            _isResending = false;
+            _currentVerificationId = verificationId;
+            _resendCountdown = 60;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('OTP resent successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+
+          // Clear OTP fields
+          for (var controller in _otpControllers) {
+            controller.clear();
+          }
+          _focusNodes[0].requestFocus();
+          _startCountdown();
+        },
+        onError: (error) {
+          if (!mounted) return;
+          setState(() => _isResending = false);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error), backgroundColor: Colors.red),
+          );
+        },
+        onAutoVerify: (credential) async {
+          try {
+            await _authService.signInWithCredential(credential);
+            if (!mounted) return;
+
+            setState(() => _isResending = false);
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Phone verified automatically!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+
+            // Navigate to next screen
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => ServiceLocationScreen()),
+            );
+          } catch (e) {
+            if (!mounted) return;
+            setState(() => _isResending = false);
+          }
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isResending = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to resend OTP: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _startCountdown() {
@@ -129,7 +232,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                     child: GestureDetector(
                       onTap: () => Navigator.pushReplacement(
                         context,
-                        MaterialPageRoute(builder: (context) => SignUpScreen()),
+                        MaterialPageRoute(
+                          builder: (context) => const SignUpScreen(),
+                        ),
                       ),
                       child: Icon(
                         Icons.arrow_back_ios,
@@ -210,7 +315,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
                 // Subtitle with phone number
                 Text(
-                  'Enter the OTP sent to ${widget.phoneNumber}',
+                  'Enter the 6-digit OTP sent to\n${widget.phoneNumber}',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: TypographyResponsive.getFormFieldFontSize(
@@ -227,20 +332,20 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                   ),
                 ),
 
-                // OTP Input Fields
+                // OTP Input Fields (6 digits for Firebase)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(
-                    4,
+                    6,
                     (index) => Padding(
                       padding: EdgeInsets.symmetric(
                         horizontal: SpacingResponsive.getVerticalSpacing(
                           context,
-                          factor: 0.8,
+                          factor: 0.5,
                         ),
                       ),
                       child: SizedBox(
-                        width: 50,
+                        width: 45,
                         child: TextField(
                           controller: _otpControllers[index],
                           focusNode: _focusNodes[index],
@@ -251,7 +356,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                             fontSize:
                                 TypographyResponsive.getResponsiveFontSize(
                                   context,
-                                  28,
+                                  24,
                                 ),
                             fontWeight: FontWeight.bold,
                             color: AppColors.textPrimary,
@@ -302,7 +407,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'OTP not recived? ',
+                      'OTP not received? ',
                       style: TextStyle(
                         fontSize: TypographyResponsive.getFormFieldFontSize(
                           context,
@@ -311,21 +416,30 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                       ),
                     ),
                     GestureDetector(
-                      onTap: _resendCountdown == 0 ? _handleResendOTP : null,
-                      child: Text(
-                        _resendCountdown > 0
-                            ? 'RESEND OTP (${_resendCountdown}s)'
-                            : 'RESEND OTP',
-                        style: TextStyle(
-                          fontSize: TypographyResponsive.getFormFieldFontSize(
-                            context,
-                          ),
-                          color: _resendCountdown > 0
-                              ? AppColors.textLight
-                              : AppColors.accent,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      onTap: (_resendCountdown == 0 && !_isResending)
+                          ? _handleResendOTP
+                          : null,
+                      child: _isResending
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(
+                              _resendCountdown > 0
+                                  ? 'RESEND OTP (${_resendCountdown}s)'
+                                  : 'RESEND OTP',
+                              style: TextStyle(
+                                fontSize:
+                                    TypographyResponsive.getFormFieldFontSize(
+                                      context,
+                                    ),
+                                color: _resendCountdown > 0
+                                    ? AppColors.textLight
+                                    : AppColors.accent,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                   ],
                 ),

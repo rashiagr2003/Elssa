@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "796624266879",
+    "project_id": "elsaa-2e01f",
+    "storage_bucket": "elsaa-2e01f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:796624266879:android:d0a1e7e414b57e4010c14a",
+        "android_client_info": {
+          "package_name": "com.example.elsaa"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "796624266879-7bjlc1f4jd3o4ot4l36dpaerrril41lv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBbSd-4ml72cRSc1iLwnT8QHtdc45fWezc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "796624266879-7bjlc1f4jd3o4ot4l36dpaerrril41lv.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

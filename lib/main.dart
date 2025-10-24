@@ -1,5 +1,5 @@
-import 'package:elsaa/screens/sign_up_screen.dart';
 import 'package:elsaa/screens/splash_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart'; // <-- Add this
@@ -7,6 +7,7 @@ import 'constants/app_colors.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
 
   // Lock orientation to portrait only
   await SystemChrome.setPreferredOrientations([
