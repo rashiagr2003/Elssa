@@ -4,6 +4,7 @@ import 'package:elsaa/screens/home_screen.dart';
 import 'package:elsaa/screens/login_screen.dart';
 import 'package:elsaa/screens/otp_verification_screen.dart';
 import 'package:elsaa/constants/validators.dart';
+import 'package:elsaa/screens/service_location_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:country_code_picker/country_code_picker.dart';
@@ -117,7 +118,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         // Navigate to home screen
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => HomeServicesScreen()),
+          MaterialPageRoute(builder: (context) => LocationServicesScreen()),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

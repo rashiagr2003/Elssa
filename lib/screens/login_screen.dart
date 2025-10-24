@@ -2,6 +2,7 @@ import 'package:country_code_picker/country_code_picker.dart';
 import 'package:elsaa/constants/app_colors.dart';
 import 'package:elsaa/constants/responsive_utils.dart';
 import 'package:elsaa/screens/otp_verification_screen.dart';
+import 'package:elsaa/screens/service_location_screen.dart';
 import 'package:elsaa/screens/sign_up_screen.dart';
 import 'package:elsaa/constants/validators.dart';
 import 'package:flutter/material.dart';
@@ -55,7 +56,7 @@ class _LoginScreenState extends State<LoginScreen> {
         // Navigate to home screen
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => HomeServicesScreen()),
+          MaterialPageRoute(builder: (context) => LocationServicesScreen()),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
